@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+results/
+*.log
+pentest_tool.log
+config.json
+*.json.bak
+*.tmp
+
+# Security - never commit sensitive data
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.json
+.env
+api_keys.txt
+
+# Scan results and reports
+reports/
+scans/
+output/
+*.html
+*.pdf
+
+# Wordlists and data files
+data/wordlists/
+*.txt
+*.lst
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.temp 
