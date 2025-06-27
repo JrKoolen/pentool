@@ -18,6 +18,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.core.utils import Logger, normalize_url, save_results
 from src.core.config import config
 from src.modules.reconnaissance.domain_info import DomainInfoGatherer
+from src.modules.reconnaissance.port_scanner import PortScanner
+from src.modules.reconnaissance.security_headers import SecurityHeadersAnalyzer
 from src.modules.discovery.directories import DirectoryEnumerator
 from src.modules.vulnerabilities.vulnerability_scanner import VulnerabilityScanner
 
@@ -28,6 +30,8 @@ class PenTestScanner:
         self.results = {
             'scan_info': {},
             'domain_info': {},
+            'port_scan': {},
+            'security_headers': {},
             'directory_enum': {},
             'vulnerabilities': [],
             'summary': {}
@@ -35,10 +39,12 @@ class PenTestScanner:
         self.start_time = None
         self.end_time = None
         self.domain_gatherer = DomainInfoGatherer()
+        self.port_scanner = PortScanner()
+        self.security_headers_analyzer = SecurityHeadersAnalyzer()
         self.directory_enumerator = DirectoryEnumerator()
         self.vulnerability_scanner = VulnerabilityScanner()
     
-    def run_full_scan(self, target: str, modules: List[str] = None) -> Dict[str, Any]:
+    def run_full_scan(self, target: str, modules: Optional[List[str]] = None) -> Dict[str, Any]:
         """Run a full penetration test scan."""
         Logger.info(f"Starting full penetration test scan for: {target}")
         
@@ -47,36 +53,76 @@ class PenTestScanner:
         
         # Default modules if none specified
         if not modules:
-            modules = ['domain_info', 'directory_enum']
+            modules = ['domain_info', 'port_scan', 'security_headers', 'directory_enum']
         
         # Initialize scan info
         self.results['scan_info'] = {
             'target': target,
             'start_time': self.start_time.isoformat(),
             'modules': modules,
-            'scanner_version': '1.0.0'
+            'scanner_version': '1.1.0'
         }
         
         try:
-            # Module 1: Domain Information Gathering
+            # Module 1: Domain Information Gathering (Enhanced with DNS recon)
             if 'domain_info' in modules:
-                Logger.info("=== Starting Domain Information Gathering ===")
-                domain_gatherer = DomainInfoGatherer()
-                self.results['domain_info'] = domain_gatherer.gather_all(target)
-                domain_gatherer.save_results()
+                Logger.info("=== Starting Enhanced Domain Information Gathering ===")
+                try:
+                    domain_gatherer = DomainInfoGatherer()
+                    self.results['domain_info'] = domain_gatherer.gather_all(target)
+                    domain_gatherer.save_results()
+                except Exception as e:
+                    Logger.error(f"Domain info gathering failed: {e}")
+                    self.results['domain_info'] = {'error': str(e)}
             
-            # Module 2: Directory and File Enumeration
+            # Module 2: Port Scanning (NEW)
+            if 'port_scan' in modules:
+                Logger.info("=== Starting Port Scanning ===")
+                try:
+                    # Extract domain for port scanning - handle URLs properly
+                    parsed_url = urlparse(target)
+                    domain = parsed_url.netloc
+                    if not domain:
+                        # If netloc is empty, try to extract domain from the target
+                        domain = target.replace('https://', '').replace('http://', '').split('/')[0]
+                    
+                    Logger.info(f"Port scanning domain: {domain}")
+                    self.results['port_scan'] = self.port_scanner.quick_scan(domain)
+                    self.port_scanner.save_results()
+                except Exception as e:
+                    Logger.error(f"Port scanning failed: {e}")
+                    self.results['port_scan'] = {'error': str(e)}
+            
+            # Module 3: Security Headers Analysis (NEW)
+            if 'security_headers' in modules:
+                Logger.info("=== Starting Security Headers Analysis ===")
+                try:
+                    self.results['security_headers'] = self.security_headers_analyzer.analyze_target(target)
+                    self.security_headers_analyzer.save_results()
+                except Exception as e:
+                    Logger.error(f"Security headers analysis failed: {e}")
+                    self.results['security_headers'] = {'error': str(e)}
+            
+            # Module 4: Directory and File Enumeration
             if 'directory_enum' in modules:
                 Logger.info("=== Starting Directory and File Enumeration ===")
-                dir_enumerator = DirectoryEnumerator()
-                self.results['directory_enum'] = dir_enumerator.enumerate_all(target)
-                dir_enumerator.save_results()
+                try:
+                    dir_enumerator = DirectoryEnumerator()
+                    self.results['directory_enum'] = dir_enumerator.enumerate_all(target)
+                    dir_enumerator.save_results()
+                except Exception as e:
+                    Logger.error(f"Directory enumeration failed: {e}")
+                    self.results['directory_enum'] = {'error': str(e)}
             
-            # Module 3: Vulnerability Scanning
+            # Module 5: Vulnerability Scanning
             if 'vulnerabilities' in modules:
                 Logger.info("=== Starting Vulnerability Scanning ===")
-                vuln_results = self.vulnerability_scanner.scan_target(target)
-                self.results['vulnerabilities'] = vuln_results
+                try:
+                    vuln_results = self.vulnerability_scanner.scan_target(target)
+                    self.results['vulnerabilities'] = vuln_results
+                except Exception as e:
+                    Logger.error(f"Vulnerability scanning failed: {e}")
+                    self.results['vulnerabilities'] = {'error': str(e)}
             
             # Generate summary
             self.generate_summary()
@@ -113,7 +159,7 @@ class PenTestScanner:
             'recommendations': []
         }
         
-        # Count domain information findings
+        # Count domain information findings (Enhanced DNS recon)
         if self.results['domain_info']:
             domain_info = self.results['domain_info']
             
@@ -131,6 +177,69 @@ class PenTestScanner:
             if 'error' in ssl_info:
                 summary['high_findings'] += 1
                 summary['recommendations'].append("SSL/TLS certificate issues detected")
+            
+            # Check DNS zone transfer vulnerabilities
+            dns_records = domain_info.get('dns_records', {})
+            zone_transfer = dns_records.get('zone_transfer', {})
+            if zone_transfer.get('zone_transfer_success'):
+                summary['critical_findings'] += 1
+                summary['recommendations'].append("DNS zone transfer vulnerability - CRITICAL")
+            
+            # Check DNS wildcard
+            wildcard = dns_records.get('wildcard_detection', {})
+            if wildcard.get('wildcard_detected'):
+                summary['medium_findings'] += 1
+                summary['recommendations'].append("DNS wildcard detected - potential subdomain takeover risk")
+            
+            # Check DNSSEC
+            dnssec = dns_records.get('dns_sec', {})
+            if not dnssec.get('dnssec_enabled'):
+                summary['medium_findings'] += 1
+                summary['recommendations'].append("DNSSEC not enabled - consider enabling for DNS security")
+        
+        # Count port scanning findings (NEW)
+        if self.results['port_scan']:
+            port_scan = self.results['port_scan']
+            open_ports = port_scan.get('open_ports', {})
+            
+            summary['total_findings'] += len(open_ports)
+            summary['low_findings'] += len(open_ports)
+            
+            # Check for dangerous ports
+            dangerous_ports = [21, 23, 3389, 5900, 5901, 5902]  # FTP, Telnet, RDP, VNC
+            for port in open_ports:
+                if port in dangerous_ports:
+                    summary['high_findings'] += 1
+                    summary['recommendations'].append(f"Potentially dangerous port {port} open - review necessity")
+            
+            # Check for development ports
+            dev_ports = [3000, 8000, 5000, 8080, 9000]  # Common dev ports
+            for port in open_ports:
+                if port in dev_ports:
+                    summary['medium_findings'] += 1
+                    summary['recommendations'].append(f"Development port {port} open - ensure not exposed in production")
+        
+        # Count security headers findings (NEW)
+        if self.results['security_headers']:
+            sec_headers = self.results['security_headers']
+            security_score = sec_headers.get('security_score', 0)
+            
+            if security_score < 50:
+                summary['high_findings'] += 1
+                summary['recommendations'].append("Security headers score very low - immediate attention required")
+            elif security_score < 80:
+                summary['medium_findings'] += 1
+                summary['recommendations'].append("Security headers need improvement")
+            
+            # Count vulnerabilities from security headers
+            vulnerabilities = sec_headers.get('vulnerabilities', [])
+            for vuln in vulnerabilities:
+                if vuln.get('severity') == 'High':
+                    summary['high_findings'] += 1
+                elif vuln.get('severity') == 'Medium':
+                    summary['medium_findings'] += 1
+                else:
+                    summary['low_findings'] += 1
         
         # Count directory enumeration findings
         if self.results['directory_enum']:
@@ -269,8 +378,8 @@ def main():
     parser = argparse.ArgumentParser(description='Web Penetration Testing Tool')
     parser.add_argument('target', help='Target URL or domain')
     parser.add_argument('--modules', nargs='+', 
-                       choices=['domain_info', 'directory_enum', 'vulnerabilities'],
-                       default=['domain_info', 'directory_enum'],
+                       choices=['domain_info', 'port_scan', 'security_headers', 'directory_enum', 'vulnerabilities'],
+                       default=['domain_info', 'port_scan', 'security_headers', 'directory_enum'],
                        help='Modules to run')
     parser.add_argument('--output', choices=['json', 'txt'], default='json',
                        help='Output format')

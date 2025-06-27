@@ -104,6 +104,12 @@ class ResultsWindow:
         # Domain Info tab
         self.create_domain_info_tab()
         
+        # Port Scan tab (NEW)
+        self.create_port_scan_tab()
+        
+        # Security Headers tab (NEW)
+        self.create_security_headers_tab()
+        
         # Directory Enum tab
         self.create_directory_enum_tab()
         
@@ -236,6 +242,147 @@ Low: {summary.get('low_findings', 0)}
         # Pack canvas and scrollbar
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    
+    def create_port_scan_tab(self):
+        """Create the port scanning tab."""
+        port_frame = ttk.Frame(self.notebook, padding="10")
+        self.notebook.add(port_frame, text="Port Scan")
+        
+        if 'port_scan' not in self.results:
+            ttk.Label(port_frame, text="No port scan results available").pack()
+            return
+        
+        port_scan = self.results['port_scan']
+        
+        # Scan summary
+        if 'scan_summary' in port_scan:
+            summary_frame = ttk.LabelFrame(port_frame, text="Scan Summary", padding="10")
+            summary_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            summary = port_scan['scan_summary']
+            summary_text = f"""
+Target: {port_scan.get('target', 'Unknown')}
+Total Ports Scanned: {summary.get('total_ports_scanned', 0)}
+Open Ports Found: {summary.get('open_ports_found', 0)}
+Scan Duration: {summary.get('scan_duration', 0)} seconds
+Ports per Second: {summary.get('ports_per_second', 0)}
+            """
+            
+            summary_label = ttk.Label(summary_frame, text=summary_text, justify=tk.LEFT)
+            summary_label.pack(anchor=tk.W)
+        
+        # Open ports
+        if 'open_ports' in port_scan and port_scan['open_ports']:
+            ports_frame = ttk.LabelFrame(port_frame, text="Open Ports", padding="10")
+            ports_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Create treeview for ports
+            columns = ('Port', 'Service', 'Banner', 'Protocol')
+            ports_tree = ttk.Treeview(ports_frame, columns=columns, show='headings', height=15)
+            
+            # Configure columns
+            for col in columns:
+                ports_tree.heading(col, text=col)
+                ports_tree.column(col, width=150)
+            
+            # Add data
+            for port, info in port_scan['open_ports'].items():
+                ports_tree.insert('', tk.END, values=(
+                    port,
+                    info.get('service', 'Unknown'),
+                    info.get('banner', 'No banner')[:50] + '...' if info.get('banner') and len(info.get('banner', '')) > 50 else info.get('banner', 'No banner'),
+                    info.get('protocol', 'TCP')
+                ))
+            
+            # Scrollbar
+            ports_scrollbar = ttk.Scrollbar(ports_frame, orient=tk.VERTICAL, command=ports_tree.yview)
+            ports_tree.configure(yscrollcommand=ports_scrollbar.set)
+            
+            ports_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            ports_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        else:
+            ttk.Label(port_frame, text="No open ports found").pack()
+    
+    def create_security_headers_tab(self):
+        """Create the security headers analysis tab."""
+        headers_frame = ttk.Frame(self.notebook, padding="10")
+        self.notebook.add(headers_frame, text="Security Headers")
+        
+        if 'security_headers' not in self.results:
+            ttk.Label(headers_frame, text="No security headers analysis available").pack()
+            return
+        
+        sec_headers = self.results['security_headers']
+        
+        # Security score
+        if 'security_score' in sec_headers:
+            score_frame = ttk.LabelFrame(headers_frame, text="Security Score", padding="10")
+            score_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            score = sec_headers['security_score']
+            score_text = f"Overall Security Score: {score}%"
+            
+            # Color code the score
+            if score >= 80:
+                score_label = ttk.Label(score_frame, text=score_text, foreground='green', font=('Arial', 12, 'bold'))
+            elif score >= 60:
+                score_label = ttk.Label(score_frame, text=score_text, foreground='orange', font=('Arial', 12, 'bold'))
+            else:
+                score_label = ttk.Label(score_frame, text=score_text, foreground='red', font=('Arial', 12, 'bold'))
+            
+            score_label.pack(anchor=tk.W)
+        
+        # Headers analysis
+        if 'headers_analysis' in sec_headers:
+            headers_analysis_frame = ttk.LabelFrame(headers_frame, text="Headers Analysis", padding="10")
+            headers_analysis_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Create treeview for headers
+            columns = ('Header', 'Status', 'Score', 'Value', 'Severity')
+            headers_tree = ttk.Treeview(headers_analysis_frame, columns=columns, show='headings', height=12)
+            
+            # Configure columns
+            for col in columns:
+                headers_tree.heading(col, text=col)
+                headers_tree.column(col, width=120)
+            
+            # Add data
+            for header_name, analysis in sec_headers['headers_analysis'].items():
+                status = "✓ Present" if analysis.get('present') else "✗ Missing"
+                score = f"{analysis.get('score', 0)}%"
+                value = analysis.get('value', 'Not present')[:30] + '...' if analysis.get('value') and len(analysis.get('value', '')) > 30 else analysis.get('value', 'Not present')
+                severity = analysis.get('severity', 'Unknown')
+                
+                headers_tree.insert('', tk.END, values=(
+                    header_name,
+                    status,
+                    score,
+                    value,
+                    severity
+                ))
+            
+            # Scrollbar
+            headers_scrollbar = ttk.Scrollbar(headers_analysis_frame, orient=tk.VERTICAL, command=headers_tree.yview)
+            headers_tree.configure(yscrollcommand=headers_scrollbar.set)
+            
+            headers_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            headers_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Recommendations
+        if 'recommendations' in sec_headers and sec_headers['recommendations']:
+            rec_frame = ttk.LabelFrame(headers_frame, text="Recommendations", padding="10")
+            rec_frame.pack(fill=tk.X, pady=(10, 0))
+            
+            rec_text = "\n".join([f"• {rec}" for rec in sec_headers['recommendations']])
+            rec_text_widget = tk.Text(rec_frame, wrap=tk.WORD, height=6)
+            rec_text_widget.insert(tk.END, rec_text)
+            rec_text_widget.config(state=tk.DISABLED)
+            
+            rec_scrollbar = ttk.Scrollbar(rec_frame, orient=tk.VERTICAL, command=rec_text_widget.yview)
+            rec_text_widget.configure(yscrollcommand=rec_scrollbar.set)
+            
+            rec_text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            rec_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     
     def create_directory_enum_tab(self):
         """Create the directory enumeration tab."""

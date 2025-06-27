@@ -74,7 +74,7 @@ Examples:
     parser.add_argument(
         '--modules', '-m',
         nargs='+',
-        choices=['domain_info', 'directory_enum', 'vulnerabilities'],
+        choices=['domain_info', 'port_scan', 'security_headers', 'directory_enum', 'vulnerabilities'],
         default=['domain_info', 'directory_enum'],
         help='Modules to run (default: domain_info directory_enum)'
     )

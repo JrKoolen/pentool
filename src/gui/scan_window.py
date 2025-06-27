@@ -59,7 +59,9 @@ class ScanWindow:
         # Module checkboxes
         self.module_vars = {}
         modules = [
-            ("domain_info", "Domain Information Gathering", "WHOIS, DNS, subdomains, ports"),
+            ("domain_info", "Domain Information Gathering", "WHOIS, DNS, subdomains, ports, DNS recon"),
+            ("port_scan", "Port Scanning", "Network port enumeration and service detection"),
+            ("security_headers", "Security Headers Analysis", "HTTP security headers evaluation"),
             ("directory_enum", "Directory Enumeration", "Files, directories, backup files"),
             ("vulnerabilities", "Vulnerability Scanning", "SQL injection, XSS, CSRF, etc.")
         ]
