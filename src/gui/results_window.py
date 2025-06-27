@@ -349,6 +349,37 @@ Low: {summary.get('low_findings', 0)}
         vulnerabilities_frame = ttk.Frame(self.notebook, padding="10")
         self.notebook.add(vulnerabilities_frame, text="Vulnerabilities")
         
+        # Create search frame
+        search_frame = ttk.Frame(vulnerabilities_frame)
+        search_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Search label
+        ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Search entry
+        self.vuln_search_var = tk.StringVar()
+        self.vuln_search_entry = ttk.Entry(search_frame, textvariable=self.vuln_search_var, width=30)
+        self.vuln_search_entry.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Search button
+        ttk.Button(search_frame, text="Search", command=self.search_vulnerabilities).pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Clear button
+        ttk.Button(search_frame, text="Clear", command=self.clear_vulnerability_search).pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Filter by severity
+        ttk.Label(search_frame, text="Severity:").pack(side=tk.LEFT, padx=(20, 5))
+        self.severity_filter_var = tk.StringVar(value="All")
+        severity_combo = ttk.Combobox(search_frame, textvariable=self.severity_filter_var, 
+                                    values=["All", "Critical", "High", "Medium", "Low"], 
+                                    state="readonly", width=10)
+        severity_combo.pack(side=tk.LEFT, padx=(0, 5))
+        severity_combo.bind('<<ComboboxSelected>>', self.filter_vulnerabilities_by_severity)
+        
+        # Results count label
+        self.vuln_count_label = ttk.Label(search_frame, text="")
+        self.vuln_count_label.pack(side=tk.RIGHT)
+        
         # Create treeview
         columns = ('Type', 'Parameter', 'Severity', 'Evidence')
         tree = ttk.Treeview(vulnerabilities_frame, columns=columns, show='headings')
@@ -371,193 +402,17 @@ Low: {summary.get('low_findings', 0)}
         # Store tree reference for the handler
         self.vuln_tree = tree
         
+        # Store all vulnerabilities for filtering
+        self.all_vulnerabilities = []
+        
         # Populate data
-        total_vulns = 0
+        self.populate_vulnerabilities()
         
-        # 1. SSL/TLS Issues from Domain Info
-        if 'domain_info' in self.results:
-            domain_info = self.results['domain_info']
-            ssl_info = domain_info.get('ssl_info', {})
-            
-            if 'error' in ssl_info:
-                tree.insert('', tk.END, values=(
-                    'SSL/TLS Certificate',
-                    'HTTPS Connection',
-                    'High',
-                    f"SSL Error: {ssl_info['error']}"
-                ))
-                total_vulns += 1
-            
-            # Check for other SSL/TLS issues
-            if ssl_info.get('certificate_expired'):
-                tree.insert('', tk.END, values=(
-                    'SSL/TLS Certificate',
-                    'Certificate Validity',
-                    'High',
-                    'Certificate has expired'
-                ))
-                total_vulns += 1
-            
-            if ssl_info.get('weak_ciphers'):
-                tree.insert('', tk.END, values=(
-                    'SSL/TLS Configuration',
-                    'Cipher Suites',
-                    'Medium',
-                    'Weak cipher suites detected'
-                ))
-                total_vulns += 1
+        # Update count
+        self.update_vulnerability_count()
         
-        # 2. Directory Enumeration Issues
-        if 'directory_enum' in self.results:
-            dir_enum = self.results['directory_enum']
-            
-            # Directory listing vulnerabilities
-            directories = dir_enum.get('directories', [])
-            for directory in directories:
-                if directory.get('directory_listing'):
-                    tree.insert('', tk.END, values=(
-                        'Directory Listing',
-                        directory.get('url', ''),
-                        'Critical',
-                        'Directory listing enabled - sensitive files exposed'
-                    ))
-                    total_vulns += 1
-            
-            # Backup files
-            backup_files = dir_enum.get('backup_files', [])
-            for backup_file in backup_files:
-                tree.insert('', tk.END, values=(
-                    'Backup File',
-                    backup_file.get('url', ''),
-                    'High',
-                    'Backup file found - may contain sensitive information'
-                ))
-                total_vulns += 1
-            
-            # Interesting findings
-            interesting_findings = dir_enum.get('interesting_findings', [])
-            for finding in interesting_findings:
-                tree.insert('', tk.END, values=(
-                    'Sensitive File',
-                    finding.get('url', ''),
-                    'Medium',
-                    finding.get('description', 'Potentially sensitive file found')
-                ))
-                total_vulns += 1
-        
-        # 3. Traditional Vulnerabilities (SQL Injection, XSS, etc.)
-        vulnerabilities = self.results.get('vulnerabilities', {})
-        
-        # Handle vulnerability scanner structure
-        if isinstance(vulnerabilities, dict):
-            # SQL Injection vulnerabilities
-            sql_injection = vulnerabilities.get('sql_injection', {})
-            if isinstance(sql_injection, dict) and 'vulnerabilities' in sql_injection:
-                sql_vulns = sql_injection['vulnerabilities']
-                total_vulns += len(sql_vulns)
-                
-                for vuln in sql_vulns:
-                    tree.insert('', tk.END, values=(
-                        'SQL Injection',
-                        vuln.get('parameter', ''),
-                        vuln.get('severity', ''),
-                        vuln.get('evidence', '')[:50] + '...' if len(vuln.get('evidence', '')) > 50 else vuln.get('evidence', '')
-                    ))
-            
-            # XSS vulnerabilities (when implemented)
-            xss = vulnerabilities.get('xss', {})
-            if isinstance(xss, dict) and 'vulnerabilities' in xss:
-                xss_vulns = xss['vulnerabilities']
-                total_vulns += len(xss_vulns)
-                
-                for vuln in xss_vulns:
-                    tree.insert('', tk.END, values=(
-                        'XSS',
-                        vuln.get('parameter', ''),
-                        vuln.get('severity', ''),
-                        vuln.get('evidence', '')[:50] + '...' if len(vuln.get('evidence', '')) > 50 else vuln.get('evidence', '')
-                    ))
-            
-            # CSRF vulnerabilities (when implemented)
-            csrf = vulnerabilities.get('csrf', {})
-            if isinstance(csrf, dict) and 'vulnerabilities' in csrf:
-                csrf_vulns = csrf['vulnerabilities']
-                total_vulns += len(csrf_vulns)
-                
-                for vuln in csrf_vulns:
-                    tree.insert('', tk.END, values=(
-                        'CSRF',
-                        vuln.get('parameter', ''),
-                        vuln.get('severity', ''),
-                        vuln.get('evidence', '')[:50] + '...' if len(vuln.get('evidence', '')) > 50 else vuln.get('evidence', '')
-                    ))
-            
-            # LFI vulnerabilities (when implemented)
-            lfi = vulnerabilities.get('lfi', {})
-            if isinstance(lfi, dict) and 'vulnerabilities' in lfi:
-                lfi_vulns = lfi['vulnerabilities']
-                total_vulns += len(lfi_vulns)
-                
-                for vuln in lfi_vulns:
-                    tree.insert('', tk.END, values=(
-                        'LFI',
-                        vuln.get('parameter', ''),
-                        vuln.get('severity', ''),
-                        vuln.get('evidence', '')[:50] + '...' if len(vuln.get('evidence', '')) > 50 else vuln.get('evidence', '')
-                    ))
-            
-            # Open Redirect vulnerabilities (when implemented)
-            open_redirect = vulnerabilities.get('open_redirect', {})
-            if isinstance(open_redirect, dict) and 'vulnerabilities' in open_redirect:
-                redirect_vulns = open_redirect['vulnerabilities']
-                total_vulns += len(redirect_vulns)
-                
-                for vuln in redirect_vulns:
-                    tree.insert('', tk.END, values=(
-                        'Open Redirect',
-                        vuln.get('parameter', ''),
-                        vuln.get('severity', ''),
-                        vuln.get('evidence', '')[:50] + '...' if len(vuln.get('evidence', '')) > 50 else vuln.get('evidence', '')
-                    ))
-        
-        # 4. Information Disclosure Issues
-        if 'domain_info' in self.results:
-            domain_info = self.results['domain_info']
-            
-            # Subdomain enumeration
-            subdomains = domain_info.get('subdomains', [])
-            if subdomains:
-                tree.insert('', tk.END, values=(
-                    'Information Disclosure',
-                    'Subdomains',
-                    'Medium',
-                    f"{len(subdomains)} subdomains discovered"
-                ))
-                total_vulns += 1
-            
-            # Technology detection
-            tech_info = domain_info.get('technology_info', {})
-            if tech_info:
-                tree.insert('', tk.END, values=(
-                    'Information Disclosure',
-                    'Technologies',
-                    'Low',
-                    'Technology stack information exposed'
-                ))
-                total_vulns += 1
-        
-        # Show summary
-        if total_vulns == 0:
-            tree.insert('', tk.END, values=('No vulnerabilities found', '', '', ''))
-        else:
-            # Add summary row
-            summary = self.results.get('summary', {})
-            tree.insert('', tk.END, values=(
-                f"SUMMARY: {total_vulns} security issues found",
-                f"Critical: {summary.get('critical_findings', 0)}",
-                f"High: {summary.get('high_findings', 0)}",
-                f"Medium: {summary.get('medium_findings', 0)}"
-            ))
+        # Bind Enter key to search
+        self.vuln_search_entry.bind('<Return>', lambda e: self.search_vulnerabilities())
     
     def create_raw_data_tab(self):
         """Create the raw data tab."""
@@ -927,4 +782,241 @@ RECOMMENDATIONS:
         text.append(f"Evidence: {self.evidence}")
         text.append("")
         
-        return "\n".join(text) 
+        return "\n".join(text)
+
+    def populate_vulnerabilities(self):
+        """Populate the vulnerabilities treeview with data."""
+        self.all_vulnerabilities = []
+        total_vulns = 0
+        
+        # 1. SSL/TLS Issues from Domain Info
+        if 'domain_info' in self.results:
+            domain_info = self.results['domain_info']
+            ssl_info = domain_info.get('ssl_info', {})
+            
+            if 'error' in ssl_info:
+                vuln_data = ('SSL/TLS Certificate', 'HTTPS Connection', 'High', f"SSL Error: {ssl_info['error']}")
+                self.all_vulnerabilities.append(vuln_data)
+                self.vuln_tree.insert('', tk.END, values=vuln_data)
+                total_vulns += 1
+            
+            # Check for other SSL/TLS issues
+            if ssl_info.get('certificate_expired'):
+                vuln_data = ('SSL/TLS Certificate', 'Certificate Validity', 'High', 'Certificate has expired')
+                self.all_vulnerabilities.append(vuln_data)
+                self.vuln_tree.insert('', tk.END, values=vuln_data)
+                total_vulns += 1
+            
+            if ssl_info.get('weak_ciphers'):
+                vuln_data = ('SSL/TLS Configuration', 'Cipher Suites', 'Medium', 'Weak cipher suites detected')
+                self.all_vulnerabilities.append(vuln_data)
+                self.vuln_tree.insert('', tk.END, values=vuln_data)
+                total_vulns += 1
+        
+        # 2. Directory Enumeration Issues
+        if 'directory_enum' in self.results:
+            dir_enum = self.results['directory_enum']
+            
+            # Directory listing vulnerabilities
+            directories = dir_enum.get('directories', [])
+            for directory in directories:
+                if directory.get('directory_listing'):
+                    vuln_data = ('Directory Listing', directory.get('url', ''), 'Critical', 'Directory listing enabled - sensitive files exposed')
+                    self.all_vulnerabilities.append(vuln_data)
+                    self.vuln_tree.insert('', tk.END, values=vuln_data)
+                    total_vulns += 1
+            
+            # Backup files
+            backup_files = dir_enum.get('backup_files', [])
+            for backup_file in backup_files:
+                vuln_data = ('Backup File', backup_file.get('url', ''), 'High', 'Backup file found - may contain sensitive information')
+                self.all_vulnerabilities.append(vuln_data)
+                self.vuln_tree.insert('', tk.END, values=vuln_data)
+                total_vulns += 1
+            
+            # Interesting findings
+            interesting_findings = dir_enum.get('interesting_findings', [])
+            for finding in interesting_findings:
+                vuln_data = ('Sensitive File', finding.get('url', ''), 'Medium', finding.get('description', 'Potentially sensitive file found'))
+                self.all_vulnerabilities.append(vuln_data)
+                self.vuln_tree.insert('', tk.END, values=vuln_data)
+                total_vulns += 1
+        
+        # 3. Traditional Vulnerabilities (SQL Injection, XSS, etc.)
+        vulnerabilities = self.results.get('vulnerabilities', {})
+        
+        # Handle vulnerability scanner structure
+        if isinstance(vulnerabilities, dict):
+            # SQL Injection vulnerabilities
+            sql_injection = vulnerabilities.get('sql_injection', {})
+            if isinstance(sql_injection, dict) and 'vulnerabilities' in sql_injection:
+                sql_vulns = sql_injection['vulnerabilities']
+                total_vulns += len(sql_vulns)
+                
+                for vuln in sql_vulns:
+                    vuln_data = (
+                        'SQL Injection',
+                        vuln.get('parameter', ''),
+                        vuln.get('severity', ''),
+                        vuln.get('evidence', '')[:50] + '...' if len(vuln.get('evidence', '')) > 50 else vuln.get('evidence', '')
+                    )
+                    self.all_vulnerabilities.append(vuln_data)
+                    self.vuln_tree.insert('', tk.END, values=vuln_data)
+            
+            # XSS vulnerabilities (when implemented)
+            xss = vulnerabilities.get('xss', {})
+            if isinstance(xss, dict) and 'vulnerabilities' in xss:
+                xss_vulns = xss['vulnerabilities']
+                total_vulns += len(xss_vulns)
+                
+                for vuln in xss_vulns:
+                    vuln_data = (
+                        'XSS',
+                        vuln.get('parameter', ''),
+                        vuln.get('severity', ''),
+                        vuln.get('evidence', '')[:50] + '...' if len(vuln.get('evidence', '')) > 50 else vuln.get('evidence', '')
+                    )
+                    self.all_vulnerabilities.append(vuln_data)
+                    self.vuln_tree.insert('', tk.END, values=vuln_data)
+            
+            # CSRF vulnerabilities (when implemented)
+            csrf = vulnerabilities.get('csrf', {})
+            if isinstance(csrf, dict) and 'vulnerabilities' in csrf:
+                csrf_vulns = csrf['vulnerabilities']
+                total_vulns += len(csrf_vulns)
+                
+                for vuln in csrf_vulns:
+                    vuln_data = (
+                        'CSRF',
+                        vuln.get('parameter', ''),
+                        vuln.get('severity', ''),
+                        vuln.get('evidence', '')[:50] + '...' if len(vuln.get('evidence', '')) > 50 else vuln.get('evidence', '')
+                    )
+                    self.all_vulnerabilities.append(vuln_data)
+                    self.vuln_tree.insert('', tk.END, values=vuln_data)
+            
+            # LFI vulnerabilities (when implemented)
+            lfi = vulnerabilities.get('lfi', {})
+            if isinstance(lfi, dict) and 'vulnerabilities' in lfi:
+                lfi_vulns = lfi['vulnerabilities']
+                total_vulns += len(lfi_vulns)
+                
+                for vuln in lfi_vulns:
+                    vuln_data = (
+                        'LFI',
+                        vuln.get('parameter', ''),
+                        vuln.get('severity', ''),
+                        vuln.get('evidence', '')[:50] + '...' if len(vuln.get('evidence', '')) > 50 else vuln.get('evidence', '')
+                    )
+                    self.all_vulnerabilities.append(vuln_data)
+                    self.vuln_tree.insert('', tk.END, values=vuln_data)
+            
+            # Open Redirect vulnerabilities (when implemented)
+            open_redirect = vulnerabilities.get('open_redirect', {})
+            if isinstance(open_redirect, dict) and 'vulnerabilities' in open_redirect:
+                redirect_vulns = open_redirect['vulnerabilities']
+                total_vulns += len(redirect_vulns)
+                
+                for vuln in redirect_vulns:
+                    vuln_data = (
+                        'Open Redirect',
+                        vuln.get('parameter', ''),
+                        vuln.get('severity', ''),
+                        vuln.get('evidence', '')[:50] + '...' if len(vuln.get('evidence', '')) > 50 else vuln.get('evidence', '')
+                    )
+                    self.all_vulnerabilities.append(vuln_data)
+                    self.vuln_tree.insert('', tk.END, values=vuln_data)
+        
+        # 4. Information Disclosure Issues
+        if 'domain_info' in self.results:
+            domain_info = self.results['domain_info']
+            
+            # Subdomain enumeration
+            subdomains = domain_info.get('subdomains', [])
+            if subdomains:
+                vuln_data = ('Information Disclosure', 'Subdomains', 'Medium', f"{len(subdomains)} subdomains discovered")
+                self.all_vulnerabilities.append(vuln_data)
+                self.vuln_tree.insert('', tk.END, values=vuln_data)
+                total_vulns += 1
+            
+            # Technology detection
+            tech_info = domain_info.get('technology_info', {})
+            if tech_info:
+                vuln_data = ('Information Disclosure', 'Technologies', 'Low', 'Technology stack information exposed')
+                self.all_vulnerabilities.append(vuln_data)
+                self.vuln_tree.insert('', tk.END, values=vuln_data)
+                total_vulns += 1
+        
+        # Show summary
+        if total_vulns == 0:
+            self.vuln_tree.insert('', tk.END, values=('No vulnerabilities found', '', '', ''))
+        else:
+            # Add summary row
+            summary = self.results.get('summary', {})
+            summary_data = (
+                f"SUMMARY: {total_vulns} security issues found",
+                f"Critical: {summary.get('critical_findings', 0)}",
+                f"High: {summary.get('high_findings', 0)}",
+                f"Medium: {summary.get('medium_findings', 0)}"
+            )
+            self.all_vulnerabilities.append(summary_data)
+            self.vuln_tree.insert('', tk.END, values=summary_data)
+
+    def update_vulnerability_count(self):
+        """Update the vulnerability count label."""
+        visible_count = len(self.vuln_tree.get_children())
+        total_count = len(self.all_vulnerabilities)
+        
+        if visible_count == total_count:
+            self.vuln_count_label.config(text=f"Showing {visible_count} vulnerabilities")
+        else:
+            self.vuln_count_label.config(text=f"Showing {visible_count} of {total_count} vulnerabilities")
+
+    def search_vulnerabilities(self):
+        """Search for vulnerabilities based on the search term."""
+        search_term = self.vuln_search_var.get().lower()
+        severity_filter = self.severity_filter_var.get()
+        
+        # Clear current display
+        for item in self.vuln_tree.get_children():
+            self.vuln_tree.delete(item)
+        
+        # Filter vulnerabilities
+        filtered_vulns = []
+        for vuln in self.all_vulnerabilities:
+            vuln_type, parameter, severity, evidence = vuln
+            
+            # Skip summary rows
+            if vuln_type.startswith('SUMMARY:'):
+                continue
+            
+            # Apply severity filter
+            if severity_filter != "All" and severity != severity_filter:
+                continue
+            
+            # Apply search filter
+            if search_term:
+                if (search_term in vuln_type.lower() or 
+                    search_term in parameter.lower() or 
+                    search_term in severity.lower() or 
+                    search_term in evidence.lower()):
+                    filtered_vulns.append(vuln)
+            else:
+                filtered_vulns.append(vuln)
+        
+        # Display filtered results
+        for vuln in filtered_vulns:
+            self.vuln_tree.insert('', tk.END, values=vuln)
+        
+        # Update count
+        self.update_vulnerability_count()
+
+    def clear_vulnerability_search(self):
+        """Clear the vulnerability search term."""
+        self.vuln_search_var.set("")
+        self.severity_filter_var.set("All")
+        self.search_vulnerabilities()
+
+    def filter_vulnerabilities_by_severity(self, event):
+        """Filter vulnerabilities based on the selected severity."""
+        self.search_vulnerabilities() 
