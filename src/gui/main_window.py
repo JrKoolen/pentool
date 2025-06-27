@@ -43,6 +43,9 @@ class MainWindow:
         self.create_menu()
         self.create_status_bar()
         
+        # Set Logger callback for GUI log output
+        Logger.set_gui_callback(self.append_log)
+        
         # Load saved data
         self.load_saved_data()
         
@@ -75,7 +78,7 @@ class MainWindow:
         """Create the main GUI widgets."""
         # Main container
         main_frame = ttk.Frame(self.root, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        main_frame.grid(row=0, column=0, sticky='nsew')
         
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
@@ -95,19 +98,24 @@ class MainWindow:
         
         # Results Section
         self.create_results_section(main_frame)
+        
+        # Log output area at the bottom
+        self.log_text = scrolledtext.ScrolledText(self.root, height=8, state='disabled', font=('Consolas', 10))
+        self.log_text.grid(row=2, column=0, sticky='wes', padx=10, pady=(0, 5))
+        self.root.rowconfigure(2, weight=0)
     
     def create_quick_scan_section(self, parent):
         """Create the quick scan section."""
         # Quick scan frame
         quick_frame = ttk.LabelFrame(parent, text="Quick Scan", padding="10")
-        quick_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
+        quick_frame.grid(row=1, column=0, columnspan=3, sticky='we', pady=(0, 10))
         quick_frame.columnconfigure(1, weight=1)
         
         # Target input
-        ttk.Label(quick_frame, text="Target URL:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        ttk.Label(quick_frame, text="Target URL:").grid(row=0, column=0, sticky='w', padx=(0, 10))
         self.target_var = tk.StringVar()
         self.target_entry = ttk.Entry(quick_frame, textvariable=self.target_var, width=50)
-        self.target_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(0, 10))
+        self.target_entry.grid(row=0, column=1, sticky='we', padx=(0, 10))
         
         # Scan button
         self.scan_button = ttk.Button(quick_frame, text="Start Scan", command=self.start_quick_scan, style='Action.TButton')
@@ -120,27 +128,27 @@ class MainWindow:
         # Progress bar
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(quick_frame, variable=self.progress_var, mode='indeterminate')
-        self.progress_bar.grid(row=1, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=(10, 0))
+        self.progress_bar.grid(row=1, column=0, columnspan=4, sticky='we', pady=(10, 0))
     
     def create_scan_management_section(self, parent):
         """Create the scan management section."""
         # Scan management frame
         scan_frame = ttk.LabelFrame(parent, text="Scan Management", padding="10")
-        scan_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))
+        scan_frame.grid(row=2, column=0, sticky='wens', padx=(0, 5))
         scan_frame.columnconfigure(0, weight=1)
         scan_frame.rowconfigure(1, weight=1)
         
         # Buttons
         button_frame = ttk.Frame(scan_frame)
-        button_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        button_frame.grid(row=0, column=0, sticky='we', pady=(0, 10))
         
-        ttk.Button(button_frame, text="Refresh", command=self.refresh_scans).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="Clear Completed", command=self.clear_completed_scans).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="Export All", command=self.export_all_results).pack(side=tk.LEFT)
+        ttk.Button(button_frame, text="Refresh", command=self.refresh_scans).pack(side='left', padx=(0, 5))
+        ttk.Button(button_frame, text="Clear Completed", command=self.clear_completed_scans).pack(side='left', padx=(0, 5))
+        ttk.Button(button_frame, text="Export All", command=self.export_all_results).pack(side='left')
         
         # Scan list
         list_frame = ttk.Frame(scan_frame)
-        list_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        list_frame.grid(row=1, column=0, sticky='wens')
         list_frame.columnconfigure(0, weight=1)
         list_frame.rowconfigure(0, weight=1)
         
@@ -157,8 +165,8 @@ class MainWindow:
         scan_scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.scan_tree.yview)
         self.scan_tree.configure(yscrollcommand=scan_scrollbar.set)
         
-        self.scan_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        scan_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.scan_tree.grid(row=0, column=0, sticky='wens')
+        scan_scrollbar.grid(row=0, column=1, sticky='ns')
         
         # Bind double-click event
         self.scan_tree.bind('<Double-1>', self.on_scan_double_click)
@@ -170,21 +178,21 @@ class MainWindow:
         """Create the results section."""
         # Results frame
         results_frame = ttk.LabelFrame(parent, text="Recent Results", padding="10")
-        results_frame.grid(row=2, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(5, 0))
+        results_frame.grid(row=2, column=1, sticky='wens', padx=(5, 0))
         results_frame.columnconfigure(0, weight=1)
         results_frame.rowconfigure(1, weight=1)
         
         # Buttons
         button_frame = ttk.Frame(results_frame)
-        button_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        button_frame.grid(row=0, column=0, sticky='we', pady=(0, 10))
         
-        ttk.Button(button_frame, text="View Details", command=self.view_selected_result).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="Export", command=self.export_selected_result).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="Delete", command=self.delete_selected_result).pack(side=tk.LEFT)
+        ttk.Button(button_frame, text="View Details", command=self.view_selected_result).pack(side='left', padx=(0, 5))
+        ttk.Button(button_frame, text="Export", command=self.export_selected_result).pack(side='left', padx=(0, 5))
+        ttk.Button(button_frame, text="Delete", command=self.delete_selected_result).pack(side='left')
         
         # Results list
         list_frame = ttk.Frame(results_frame)
-        list_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        list_frame.grid(row=1, column=0, sticky='wens')
         list_frame.columnconfigure(0, weight=1)
         list_frame.rowconfigure(0, weight=1)
         
@@ -201,8 +209,8 @@ class MainWindow:
         results_scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.results_tree.yview)
         self.results_tree.configure(yscrollcommand=results_scrollbar.set)
         
-        self.results_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        results_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.results_tree.grid(row=0, column=0, sticky='wens')
+        results_scrollbar.grid(row=0, column=1, sticky='ns')
         
         # Bind double-click event
         self.results_tree.bind('<Double-1>', self.on_result_double_click)
@@ -262,8 +270,8 @@ class MainWindow:
         self.status_var = tk.StringVar()
         self.status_var.set("Ready")
         
-        status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
-        status_bar.grid(row=1, column=0, sticky=(tk.W, tk.E))
+        status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN, anchor='w')
+        status_bar.grid(row=1, column=0, sticky='we')
     
     def start_quick_scan(self):
         """Start a quick scan with default settings."""
@@ -613,6 +621,15 @@ Always ensure you have proper permission before testing any website."""
         """Save scan data."""
         # This would save to a file
         pass
+    
+    def append_log(self, message):
+        """Append a log message to the log output area."""
+        def do_append():
+            self.log_text.configure(state='normal')
+            self.log_text.insert(tk.END, message + '\n')
+            self.log_text.see(tk.END)
+            self.log_text.configure(state='disabled')
+        self.root.after(0, do_append)
     
     def run(self):
         """Start the GUI application."""

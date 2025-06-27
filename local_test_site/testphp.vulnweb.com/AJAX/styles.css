@@ -1,0 +1,36 @@
+body {
+  font-family: Verdana, Geneva, Arial, helvetica, sans-serif;
+}
+
+td {
+	font-family: Verdana, Geneva, Arial, helvetica, sans-serif;
+}
+
+th {
+	font-family: Verdana, Geneva, Arial, helvetica, sans-serif;
+}
+
+a {
+	text-decoration: none;
+	color:#333333;
+}
+
+a:hover {
+	background-color: #FFEE00;
+}
+
+td.bordered {
+	border: 1px solid #CCCCCC;
+	background:#FFCC00;
+}
+
+#contentDiv {
+	border: 1px solid #CCCCCC;
+}
+
+#xmlDiv {
+	font-family: "Courier New", Courier, mono;
+	font-size: 12px;
+	color: #33CC00;
+	background-color: #000000;
+}

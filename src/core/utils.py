@@ -75,37 +75,52 @@ class HTTPClient:
             return None
 
 class Logger:
-    """Custom logger with colored output."""
-    
+    """Custom logger with colored output and optional GUI callback."""
+    gui_callback = None
+
+    @staticmethod
+    def set_gui_callback(callback):
+        Logger.gui_callback = callback
+
     @staticmethod
     def info(message: str):
         """Log info message."""
         print(f"{Fore.BLUE}[INFO]{Style.RESET_ALL} {message}")
         logging.info(message)
-    
+        if Logger.gui_callback:
+            Logger.gui_callback(f"[INFO] {message}")
+
     @staticmethod
     def success(message: str):
         """Log success message."""
         print(f"{Fore.GREEN}[SUCCESS]{Style.RESET_ALL} {message}")
         logging.info(f"SUCCESS: {message}")
-    
+        if Logger.gui_callback:
+            Logger.gui_callback(f"[SUCCESS] {message}")
+
     @staticmethod
     def warning(message: str):
         """Log warning message."""
         print(f"{Fore.YELLOW}[WARNING]{Style.RESET_ALL} {message}")
         logging.warning(message)
-    
+        if Logger.gui_callback:
+            Logger.gui_callback(f"[WARNING] {message}")
+
     @staticmethod
     def error(message: str):
         """Log error message."""
         print(f"{Fore.RED}[ERROR]{Style.RESET_ALL} {message}")
         logging.error(message)
-    
+        if Logger.gui_callback:
+            Logger.gui_callback(f"[ERROR] {message}")
+
     @staticmethod
     def critical(message: str):
         """Log critical message."""
         print(f"{Fore.RED}{Style.BRIGHT}[CRITICAL]{Style.RESET_ALL} {message}")
         logging.critical(message)
+        if Logger.gui_callback:
+            Logger.gui_callback(f"[CRITICAL] {message}")
 
 def get_domain_info(domain: str) -> Dict[str, Any]:
     """Get comprehensive domain information."""

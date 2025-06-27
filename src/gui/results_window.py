@@ -365,9 +365,88 @@ Low: {summary.get('low_findings', 0)}
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         tree.configure(yscrollcommand=scrollbar.set)
         
+        # Add double-click handler for detailed view
+        tree.bind('<Double-1>', self.show_vulnerability_details)
+        
+        # Store tree reference for the handler
+        self.vuln_tree = tree
+        
         # Populate data
-        vulnerabilities = self.results.get('vulnerabilities', {})
         total_vulns = 0
+        
+        # 1. SSL/TLS Issues from Domain Info
+        if 'domain_info' in self.results:
+            domain_info = self.results['domain_info']
+            ssl_info = domain_info.get('ssl_info', {})
+            
+            if 'error' in ssl_info:
+                tree.insert('', tk.END, values=(
+                    'SSL/TLS Certificate',
+                    'HTTPS Connection',
+                    'High',
+                    f"SSL Error: {ssl_info['error']}"
+                ))
+                total_vulns += 1
+            
+            # Check for other SSL/TLS issues
+            if ssl_info.get('certificate_expired'):
+                tree.insert('', tk.END, values=(
+                    'SSL/TLS Certificate',
+                    'Certificate Validity',
+                    'High',
+                    'Certificate has expired'
+                ))
+                total_vulns += 1
+            
+            if ssl_info.get('weak_ciphers'):
+                tree.insert('', tk.END, values=(
+                    'SSL/TLS Configuration',
+                    'Cipher Suites',
+                    'Medium',
+                    'Weak cipher suites detected'
+                ))
+                total_vulns += 1
+        
+        # 2. Directory Enumeration Issues
+        if 'directory_enum' in self.results:
+            dir_enum = self.results['directory_enum']
+            
+            # Directory listing vulnerabilities
+            directories = dir_enum.get('directories', [])
+            for directory in directories:
+                if directory.get('directory_listing'):
+                    tree.insert('', tk.END, values=(
+                        'Directory Listing',
+                        directory.get('url', ''),
+                        'Critical',
+                        'Directory listing enabled - sensitive files exposed'
+                    ))
+                    total_vulns += 1
+            
+            # Backup files
+            backup_files = dir_enum.get('backup_files', [])
+            for backup_file in backup_files:
+                tree.insert('', tk.END, values=(
+                    'Backup File',
+                    backup_file.get('url', ''),
+                    'High',
+                    'Backup file found - may contain sensitive information'
+                ))
+                total_vulns += 1
+            
+            # Interesting findings
+            interesting_findings = dir_enum.get('interesting_findings', [])
+            for finding in interesting_findings:
+                tree.insert('', tk.END, values=(
+                    'Sensitive File',
+                    finding.get('url', ''),
+                    'Medium',
+                    finding.get('description', 'Potentially sensitive file found')
+                ))
+                total_vulns += 1
+        
+        # 3. Traditional Vulnerabilities (SQL Injection, XSS, etc.)
+        vulnerabilities = self.results.get('vulnerabilities', {})
         
         # Handle vulnerability scanner structure
         if isinstance(vulnerabilities, dict):
@@ -441,17 +520,43 @@ Low: {summary.get('low_findings', 0)}
                         vuln.get('evidence', '')[:50] + '...' if len(vuln.get('evidence', '')) > 50 else vuln.get('evidence', '')
                     ))
         
+        # 4. Information Disclosure Issues
+        if 'domain_info' in self.results:
+            domain_info = self.results['domain_info']
+            
+            # Subdomain enumeration
+            subdomains = domain_info.get('subdomains', [])
+            if subdomains:
+                tree.insert('', tk.END, values=(
+                    'Information Disclosure',
+                    'Subdomains',
+                    'Medium',
+                    f"{len(subdomains)} subdomains discovered"
+                ))
+                total_vulns += 1
+            
+            # Technology detection
+            tech_info = domain_info.get('technology_info', {})
+            if tech_info:
+                tree.insert('', tk.END, values=(
+                    'Information Disclosure',
+                    'Technologies',
+                    'Low',
+                    'Technology stack information exposed'
+                ))
+                total_vulns += 1
+        
         # Show summary
         if total_vulns == 0:
             tree.insert('', tk.END, values=('No vulnerabilities found', '', '', ''))
         else:
             # Add summary row
-            vuln_summary = vulnerabilities.get('summary', {})
+            summary = self.results.get('summary', {})
             tree.insert('', tk.END, values=(
-                f"SUMMARY: {total_vulns} vulnerabilities found",
-                f"Critical: {vuln_summary.get('critical', 0)}",
-                f"High: {vuln_summary.get('high', 0)}",
-                f"Medium: {vuln_summary.get('medium', 0)}"
+                f"SUMMARY: {total_vulns} security issues found",
+                f"Critical: {summary.get('critical_findings', 0)}",
+                f"High: {summary.get('high_findings', 0)}",
+                f"Medium: {summary.get('medium_findings', 0)}"
             ))
     
     def create_raw_data_tab(self):
@@ -569,5 +674,257 @@ Low: {summary.get('low_findings', 0)}
                 for i, rec in enumerate(summary['recommendations'], 1):
                     text.append(f"{i}. {rec}")
                 text.append("")
+        
+        return "\n".join(text)
+    
+    def show_vulnerability_details(self, event):
+        """Show detailed information about a vulnerability."""
+        selected_items = self.vuln_tree.selection()
+        if not selected_items:
+            return
+        
+        # Get selected vulnerability (take first selected item)
+        selected_item = selected_items[0]
+        selected_values = self.vuln_tree.item(selected_item)['values']
+        
+        if len(selected_values) >= 4:
+            vulnerability_type, parameter, severity, evidence = selected_values
+            
+            # Skip summary rows
+            if vulnerability_type.startswith('SUMMARY:'):
+                return
+            
+            # Store details for export
+            self.vulnerability_type = vulnerability_type
+            self.parameter = parameter
+            self.severity = severity
+            self.evidence = evidence
+            
+            # Create a new window for detailed information
+            detail_window = tk.Toplevel(self.window)
+            detail_window.title(f"Vulnerability Details - {vulnerability_type}")
+            detail_window.geometry("600x400")
+            detail_window.minsize(500, 300)
+            
+            # Create widgets
+            self.create_vulnerability_details_widgets(detail_window, vulnerability_type, parameter, severity, evidence)
+    
+    def create_vulnerability_details_widgets(self, parent, vulnerability_type, parameter, severity, evidence):
+        """Create widgets for displaying vulnerability details."""
+        # Main container
+        main_frame = ttk.Frame(parent, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Header
+        self.create_vulnerability_header(main_frame, vulnerability_type)
+        
+        # Content area
+        self.create_vulnerability_content_area(main_frame, vulnerability_type, parameter, severity, evidence)
+        
+        # Footer
+        self.create_vulnerability_footer(main_frame, parent)
+    
+    def create_vulnerability_header(self, parent, vulnerability_type):
+        """Create the header section."""
+        header_frame = ttk.Frame(parent)
+        header_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Title
+        title_label = ttk.Label(header_frame, text=f"Vulnerability Details - {vulnerability_type}", font=("Arial", 12, "bold"))
+        title_label.pack(anchor=tk.W)
+    
+    def create_vulnerability_content_area(self, parent, vulnerability_type, parameter, severity, evidence):
+        """Create the main content area."""
+        # Create scrollable text area
+        text_frame = ttk.Frame(parent)
+        text_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # Text widget for details
+        text_widget = tk.Text(text_frame, wrap=tk.WORD, height=15)
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=text_widget.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        text_widget.configure(yscrollcommand=scrollbar.set)
+        
+        # Populate with vulnerability details
+        details_text = f"""
+VULNERABILITY DETAILS
+{'='*50}
+
+Type: {vulnerability_type}
+Parameter: {parameter}
+Severity: {severity}
+Evidence: {evidence}
+
+{'='*50}
+
+DETAILED ANALYSIS:
+"""
+        
+        # Add specific details based on vulnerability type
+        if vulnerability_type == "SSL/TLS Certificate":
+            details_text += f"""
+SSL/TLS Certificate Issue Detected
+
+This vulnerability indicates problems with the SSL/TLS configuration:
+
+• Certificate Error: {evidence}
+• Affected Parameter: {parameter}
+• Risk Level: {severity}
+
+IMPACT:
+• Potential man-in-the-middle attacks
+• Data interception
+• Browser security warnings
+• Loss of user trust
+
+RECOMMENDATIONS:
+• Fix SSL certificate configuration
+• Ensure certificate is valid and not expired
+• Use strong cipher suites
+• Implement proper certificate validation
+"""
+        
+        elif vulnerability_type == "Directory Listing":
+            details_text += f"""
+Directory Listing Vulnerability
+
+This critical vulnerability exposes sensitive files and directories:
+
+• Affected URL: {parameter}
+• Risk Level: {severity}
+• Evidence: {evidence}
+
+IMPACT:
+• Exposure of sensitive files
+• Information disclosure
+• Potential data breach
+• Server enumeration
+
+RECOMMENDATIONS:
+• Disable directory listing immediately
+• Configure proper access controls
+• Remove or protect sensitive files
+• Implement proper file permissions
+"""
+        
+        elif vulnerability_type == "Backup File":
+            details_text += f"""
+Backup File Found
+
+A backup file was discovered that may contain sensitive information:
+
+• File URL: {parameter}
+• Risk Level: {severity}
+• Evidence: {evidence}
+
+IMPACT:
+• Source code exposure
+• Configuration disclosure
+• Database credentials exposure
+• Application logic revelation
+
+RECOMMENDATIONS:
+• Remove all backup files immediately
+• Implement proper backup procedures
+• Use version control instead of backup files
+• Secure file upload restrictions
+"""
+        
+        elif vulnerability_type == "SQL Injection":
+            details_text += f"""
+SQL Injection Vulnerability
+
+A SQL injection vulnerability was detected:
+
+• Parameter: {parameter}
+• Risk Level: {severity}
+• Evidence: {evidence}
+
+IMPACT:
+• Unauthorized database access
+• Data theft or manipulation
+• Authentication bypass
+• Complete system compromise
+
+RECOMMENDATIONS:
+• Use parameterized queries
+• Implement input validation
+• Apply principle of least privilege
+• Use ORM frameworks
+• Regular security testing
+"""
+        
+        else:
+            details_text += f"""
+General Security Issue
+
+A security vulnerability was detected:
+
+• Type: {vulnerability_type}
+• Parameter: {parameter}
+• Risk Level: {severity}
+• Evidence: {evidence}
+
+IMPACT:
+• Potential security breach
+• Information disclosure
+• System compromise
+
+RECOMMENDATIONS:
+• Investigate and fix the issue
+• Implement proper security controls
+• Regular security assessments
+• Follow security best practices
+"""
+        
+        # Insert the text
+        text_widget.insert(tk.END, details_text)
+        text_widget.config(state=tk.DISABLED)
+    
+    def create_vulnerability_footer(self, parent, detail_window):
+        """Create the footer section."""
+        footer_frame = ttk.Frame(parent)
+        footer_frame.pack(fill=tk.X)
+        
+        # Close button
+        close_button = ttk.Button(footer_frame, text="Close", command=detail_window.destroy)
+        close_button.pack(side=tk.RIGHT, padx=(10, 0))
+        
+        # Export button
+        export_button = ttk.Button(footer_frame, text="Export Details", command=self.export_vulnerability_details)
+        export_button.pack(side=tk.RIGHT)
+    
+    def export_vulnerability_details(self):
+        """Export vulnerability details to file."""
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[
+                ("Text files", "*.txt"),
+                ("All files", "*.*")
+            ]
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'w') as f:
+                    f.write(self.format_vulnerability_details())
+                
+                messagebox.showinfo("Success", f"Vulnerability details exported to {filename}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to export vulnerability details: {e}")
+    
+    def format_vulnerability_details(self):
+        """Format vulnerability details for export."""
+        text = []
+        text.append("VULNERABILITY DETAILS")
+        text.append("=" * 50)
+        text.append(f"Type: {self.vulnerability_type}")
+        text.append(f"Parameter: {self.parameter}")
+        text.append(f"Severity: {self.severity}")
+        text.append(f"Evidence: {self.evidence}")
+        text.append("")
         
         return "\n".join(text) 
